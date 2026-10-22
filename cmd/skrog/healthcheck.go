@@ -55,16 +55,20 @@ flags:
 	}
 	opts.Distro = target.Distro
 
-	deadline := time.Now().Add(*wait)
+	ctx, cancel := context.WithTimeout(context.Background(), *wait)
+	defer cancel()
 	for {
-		hc := probeHealth(context.Background(), p, opts)
+		hc := probeHealth(ctx, p, opts)
 		if hc.Ready {
 			return healthcheckReport(hc, *asJSON, exitOK)
 		}
-		if !time.Now().Before(deadline) {
+		if ctx.Err() != nil {
 			return healthcheckReport(hc, *asJSON, exitError)
 		}
-		time.Sleep(time.Second)
+		select {
+		case <-ctx.Done():
+		case <-time.After(time.Second):
+		}
 	}
 }
 
