@@ -52,6 +52,9 @@ type fakeWSL struct {
 	// test for "this was joined" passes whether the join is there or not.
 	delayExecContaining string
 	execDelay           time.Duration
+	// blockExecContaining waits for its context to expire, modelling a WSL
+	// request that makes no progress until the caller's deadline cancels it.
+	blockExecContaining string
 
 	// order interleaves Exec and Start calls, which the separate slices cannot:
 	// #398 made the pre-launch steps concurrent, and what has to hold is that
@@ -127,7 +130,7 @@ func (f *fakeWSL) List(context.Context) ([]wsl.Distro, error) {
 	return out, nil
 }
 
-func (f *fakeWSL) Exec(_ context.Context, _, _ string, args ...string) (string, error) {
+func (f *fakeWSL) Exec(ctx context.Context, _, _ string, args ...string) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.execs = append(f.execs, args)
@@ -139,6 +142,12 @@ func (f *fakeWSL) Exec(_ context.Context, _, _ string, args ...string) (string, 
 		f.mu.Unlock()
 		time.Sleep(f.execDelay)
 		f.mu.Lock()
+	}
+	if f.blockExecContaining != "" && strings.Contains(strings.Join(args, " "), f.blockExecContaining) {
+		f.mu.Unlock()
+		<-ctx.Done()
+		f.mu.Lock()
+		return "", ctx.Err()
 	}
 	if f.panicOnExecContaining != "" && strings.Contains(strings.Join(args, " "), f.panicOnExecContaining) {
 		panic("fakeWSL: deliberate panic in " + f.panicOnExecContaining)
@@ -498,6 +507,24 @@ func TestStartEngineRespectsContextCancel(t *testing.T) {
 	}
 	if elapsed := time.Since(start); elapsed > 5*time.Second {
 		t.Errorf("took %s to honor cancellation", elapsed)
+	}
+}
+
+func TestStartEngineDeadlineCancelsAStuckWSLProbe(t *testing.T) {
+	w := healthyWSL()
+	w.blockExecContaining = "_ping"
+	p := &provision.Provisioner{WSL: w, Logger: quietLogger()}
+
+	start := time.Now()
+	err := p.StartEngine(context.Background(), provision.Options{
+		StateDir:     t.TempDir(),
+		StartTimeout: 100 * time.Millisecond,
+	})
+	if err == nil {
+		t.Fatal("StartEngine succeeded despite a blocked probe")
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Errorf("took %s to honor StartTimeout", elapsed)
 	}
 }
 
