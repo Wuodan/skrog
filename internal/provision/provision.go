@@ -644,6 +644,7 @@ func (p *Provisioner) StartEngine(ctx context.Context, opts Options) error {
 	// A deadline must cover every WSL round trip, not merely the gaps between
 	// probes. Otherwise one wedged wsl.exe call can outlive StartTimeout and
 	// leave a caller waiting indefinitely.
+	callerCtx := ctx
 	ctx, cancel := context.WithTimeout(ctx, opts.StartTimeout)
 	defer cancel()
 
@@ -743,6 +744,7 @@ func (p *Provisioner) StartEngine(ctx context.Context, opts Options) error {
 	}
 
 	deadline := time.Now().Add(opts.StartTimeout)
+waitForEngine:
 	for time.Now().Before(deadline) {
 		if running, _ := p.engineRunning(ctx, opts); running {
 			p.logger().Info("engine socket is up", "distro", opts.Distro)
@@ -759,7 +761,13 @@ func (p *Provisioner) StartEngine(ctx context.Context, opts Options) error {
 		select {
 		case <-ctx.Done():
 			waitForAgent()
-			return ctx.Err()
+			// A caller cancellation must return promptly. A StartTimeout is
+			// different: keep the existing failure diagnosis, including the
+			// last dockerd log lines.
+			if callerCtx.Err() != nil {
+				return callerCtx.Err()
+			}
+			break waitForEngine
 		case <-time.After(250 * time.Millisecond):
 		}
 	}
@@ -773,7 +781,11 @@ func (p *Provisioner) StartEngine(ctx context.Context, opts Options) error {
 	p.logger().Info("engine start phases", ph.args()...)
 
 	// Include the daemon's own last words; without them this is undiagnosable.
-	log, _ := p.wsl().Exec(ctx, opts.Distro, "root", "tail", "-30", "/var/log/dockerd.log")
+	// The start context has timed out, so use a short, independent deadline for
+	// this best-effort diagnostic rather than skipping it immediately.
+	diagnosticCtx, cancelDiagnostic := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelDiagnostic()
+	log, _ := p.wsl().Exec(diagnosticCtx, opts.Distro, "root", "tail", "-30", "/var/log/dockerd.log")
 	return fmt.Errorf("dockerd did not create %s within %s. Last log lines:\n%s",
 		EngineSocket, opts.StartTimeout, log)
 }
