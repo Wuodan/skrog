@@ -641,11 +641,6 @@ func (p *Provisioner) ReapplyRunning(ctx context.Context, opts Options) error {
 // StartEngine launches dockerd and waits for its socket.
 func (p *Provisioner) StartEngine(ctx context.Context, opts Options) error {
 	opts = opts.withDefaults()
-	// A deadline must cover every WSL round trip, not merely the gaps between
-	// probes. Otherwise one wedged wsl.exe call can outlive StartTimeout and
-	// leave a caller waiting indefinitely.
-	ctx, cancel := context.WithTimeout(ctx, opts.StartTimeout)
-	defer cancel()
 
 	ph := newStartPhases()
 
