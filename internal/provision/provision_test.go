@@ -67,6 +67,7 @@ type fakeWSL struct {
 	importErr error
 	statusErr error
 	listErr   error
+	blockList bool
 }
 
 func (f *fakeWSL) Status(context.Context) (wsl.Status, error) {
@@ -119,7 +120,11 @@ func (f *fakeWSL) Terminate(_ context.Context, distro string) error {
 	return nil
 }
 
-func (f *fakeWSL) List(context.Context) ([]wsl.Distro, error) {
+func (f *fakeWSL) List(ctx context.Context) ([]wsl.Distro, error) {
+	if f.blockList {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.listErr != nil {
@@ -525,6 +530,28 @@ func TestStartEngineDeadlineCancelsAStuckWSLProbe(t *testing.T) {
 	}
 	if elapsed := time.Since(start); elapsed > time.Second {
 		t.Errorf("took %s to honor StartTimeout", elapsed)
+	}
+}
+
+func TestInstallTimeoutCancelsAStuckPreflight(t *testing.T) {
+	w := healthyWSL()
+	w.blockList = true
+	p := &provision.Provisioner{WSL: w, Logger: quietLogger()}
+	url, sum := rootfsServer(t, []byte("rootfs"))
+
+	start := time.Now()
+	_, err := p.Install(context.Background(), provision.Options{
+		StateDir:       t.TempDir(),
+		DataDir:        t.TempDir(),
+		RootfsURL:      url,
+		RootfsSHA256:   sum,
+		InstallTimeout: 25 * time.Millisecond,
+	})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("error = %v, want context deadline exceeded", err)
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Errorf("install returned after %s, want it to honor InstallTimeout", elapsed)
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Runner executes an external command. It exists so Local can be tested
@@ -233,8 +234,16 @@ func (l *Local) Start(ctx context.Context, distro, user string, args ...string) 
 // execRunner runs real processes.
 type execRunner struct{}
 
+const execWaitDelay = 5 * time.Second
+
 func (execRunner) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
-	return exec.CommandContext(ctx, name, args...).CombinedOutput()
+	return runCommand(ctx, execWaitDelay, name, args...)
+}
+
+func runCommand(ctx context.Context, waitDelay time.Duration, name string, args ...string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.WaitDelay = waitDelay
+	return cmd.CombinedOutput()
 }
 
 func (execRunner) Start(ctx context.Context, name string, args ...string) (func(), error) {

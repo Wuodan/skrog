@@ -530,6 +530,8 @@ flags:
     	override the rootfs URL (development)
   -state-dir string
     	override Skrog's state directory
+  -timeout duration
+    	fail the whole install after this duration (for CI)
 ```
 
 ## lock

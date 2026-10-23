@@ -90,6 +90,9 @@ type Options struct {
 	Headless bool
 	// StartTimeout bounds the wait for dockerd's socket. Defaults to 60s.
 	StartTimeout time.Duration
+	// InstallTimeout bounds the whole install, including preflight, import and
+	// engine startup. Zero leaves the install unbounded for interactive use.
+	InstallTimeout time.Duration
 	// Network configures the engine for corporate networks (#62): a proxy for
 	// dockerd's pulls and extra CA certificates to trust. Applied on every
 	// engine start, so a rootfs re-import keeps it.
@@ -267,6 +270,11 @@ func (e *PreflightError) Error() string {
 // images and volumes and silently reimporting would destroy them.
 func (p *Provisioner) Install(ctx context.Context, opts Options) (*Manifest, error) {
 	opts = opts.withDefaults()
+	if opts.InstallTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, opts.InstallTimeout)
+		defer cancel()
+	}
 	if err := validateDistroName(opts.Distro); err != nil {
 		return nil, err
 	}

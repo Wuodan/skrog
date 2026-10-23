@@ -51,6 +51,7 @@ func runInstall(args []string) int {
 		noVerifySig   = fs.Bool("no-verify-signature", false, "skip the rootfs signature check for this install (the SHA-256 pin still applies)")
 		rootfsURL     = fs.String("rootfs-url", "", "override the rootfs URL (development)")
 		rootfsSHA     = fs.String("rootfs-sha256", "", "expected rootfs SHA-256; required with --rootfs-url")
+		timeout       = fs.Duration("timeout", 0, "fail the whole install after this duration (for CI)")
 		asJSON        = fs.Bool("json", false, "emit the resulting manifest as JSON")
 		configPath    = fs.String("config", "", "declarative install from a skrog.yaml (see `skrog config export`)")
 		locked        = fs.String("locked", "", "install the exact engine pinned in a skrog.lock (see `skrog lock`)")
@@ -76,23 +77,29 @@ flags:
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
+	if *timeout < 0 {
+		fmt.Fprintln(os.Stderr, "skrog: --timeout must not be negative")
+		return exitUsage
+	}
 
 	log := cliLogger(*asJSON)
 
 	if *configPath != "" {
 		return runInstallFromConfig(*configPath, provision.Options{
-			Distro:   *distro,
-			StateDir: *stateDir,
-			DataDir:  *dataDir,
-			Headless: *headless,
+			Distro:         *distro,
+			StateDir:       *stateDir,
+			DataDir:        *dataDir,
+			Headless:       *headless,
+			InstallTimeout: *timeout,
 		}, *engineVersion, *noAutostart, log)
 	}
 
 	opts := provision.Options{
-		Distro:   *distro,
-		StateDir: *stateDir,
-		DataDir:  *dataDir,
-		Headless: *headless,
+		Distro:         *distro,
+		StateDir:       *stateDir,
+		DataDir:        *dataDir,
+		Headless:       *headless,
+		InstallTimeout: *timeout,
 	}
 
 	opts, cleanup, code := applyInstallSource(opts, installSource{

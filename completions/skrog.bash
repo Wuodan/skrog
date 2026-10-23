@@ -46,7 +46,7 @@ _skrog() {
             doctor) flags="--fix --json --report --state-dir" ;;
             enable-gpu) flags="--distro --off --state-dir --vendor" ;;
             healthcheck) flags="--json --state-dir --wait" ;;
-            install) flags="--config --data-dir --distro --engine-version --headless --json --locked --no-autostart --no-verify-signature --offline --rootfs-sha256 --rootfs-url --state-dir" ;;
+            install) flags="--config --data-dir --distro --engine-version --headless --json --locked --no-autostart --no-verify-signature --offline --rootfs-sha256 --rootfs-url --state-dir --timeout" ;;
             lock) flags="--engine-version --o --output" ;;
             logs) flags="--follow --json --n --source --state-dir" ;;
             migrate) flags="--docker --docker-host --dry-run --from-context --from-desktop --from-host --from-podman --from-rancher --only --state-dir" ;;
