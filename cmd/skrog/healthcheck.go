@@ -57,19 +57,14 @@ flags:
 
 	ctx, cancel := context.WithTimeout(context.Background(), *wait)
 	defer cancel()
-	for {
-		hc := probeHealth(ctx, p, opts)
-		if hc.Ready {
-			return healthcheckReport(hc, *asJSON, exitOK)
-		}
-		if ctx.Err() != nil {
-			return healthcheckReport(hc, *asJSON, exitError)
-		}
-		select {
-		case <-ctx.Done():
-		case <-time.After(time.Second):
-		}
+	var hc healthcheckJSON
+	if waitForReadiness(ctx, time.Second, func(ctx context.Context) bool {
+		hc = probeHealth(ctx, p, opts)
+		return hc.Ready
+	}) {
+		return healthcheckReport(hc, *asJSON, exitOK)
 	}
+	return healthcheckReport(hc, *asJSON, exitError)
 }
 
 // probeHealth reads the same facts `skrog status` does and applies the one

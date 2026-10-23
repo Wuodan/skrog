@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"context"
+	"testing"
+	"time"
+)
 
 // readiness is the whole contract of `skrog healthcheck`: pin every case.
 func TestReadiness(t *testing.T) {
@@ -27,5 +31,27 @@ func TestReadiness(t *testing.T) {
 				t.Error("reason must always explain the verdict")
 			}
 		})
+	}
+}
+
+func TestWaitForReadinessCancelsBlockedProbe(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
+	defer cancel()
+
+	started := time.Now()
+	called := 0
+	ready := waitForReadiness(ctx, time.Millisecond, func(ctx context.Context) bool {
+		called++
+		<-ctx.Done()
+		return false
+	})
+	if ready {
+		t.Fatal("blocked probe reported ready")
+	}
+	if called != 1 {
+		t.Fatalf("probe calls = %d, want 1", called)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("blocked probe returned after %s, want it to honor the deadline", elapsed)
 	}
 }

@@ -539,19 +539,33 @@ running, and waits for the engine to answer.
 	// wsl exec bounded by the deadline above.
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
-	for ctx.Err() == nil {
-		if p.EngineRunning(ctx, opts) {
-			fmt.Println("engine is running")
-			return exitOK
-		}
-		select {
-		case <-ctx.Done():
-		case <-time.After(250 * time.Millisecond):
-		}
+	if waitForReadiness(ctx, 250*time.Millisecond, func(ctx context.Context) bool {
+		return p.EngineRunning(ctx, opts)
+	}) {
+		fmt.Println("engine is running")
+		return exitOK
 	}
 	fmt.Fprintf(os.Stderr, "skrog: engine did not come up within %s; see supervisor.log in %s\n",
 		*timeout, opts.StateDir)
 	return exitError
+}
+
+// waitForReadiness polls probe until it succeeds or ctx expires. Passing ctx
+// to every probe matters: WSL can itself stop responding while the caller is
+// waiting, and the command deadline must stop that probe too.
+func waitForReadiness(ctx context.Context, interval time.Duration, probe func(context.Context) bool) bool {
+	for {
+		if probe(ctx) {
+			return true
+		}
+		if ctx.Err() != nil {
+			return false
+		}
+		select {
+		case <-ctx.Done():
+		case <-time.After(interval):
+		}
+	}
 }
 
 func runStop(args []string) int {
